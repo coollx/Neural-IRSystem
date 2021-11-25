@@ -41,13 +41,16 @@ class Document:
             self.tf_idf.append(
                 (1 + log10(0.0 + self.freq_map[token])) * log10((0.0 + N) / (0.0 + doc_freq[token]))
             )
-        return sqrt(sum(i*i for i in self.tf_idf))
+        self.norm = sqrt(sum(i*i for i in self.tf_idf))
     
     # def get_norm(self):
     #     return self.norm
     
     def __str__(self):
         return "Doc# {}: {}".format(self.get_id(), str(self.token_list))
+    
+    def __lt__(self, other):
+        return other.norm > self.norm
     
 
 if __name__ == '__main__':
@@ -56,4 +59,14 @@ if __name__ == '__main__':
                  \
                  \
                  world "I am tired! I like fruit...and milk 大西瓜')
+    d1 = Document(1, 'Yay its one of my favorite episodes of Boy Meets World :)')
     print(d.freq_map)
+    print(d.tf_idf)
+    
+    from queue import PriorityQueue
+    pq=PriorityQueue()
+    pq.put((1,d))
+    pq.put((2,d1))
+    
+    print(pq.get()[1].raw_text)
+    
