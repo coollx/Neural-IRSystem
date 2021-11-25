@@ -50,3 +50,10 @@ class Document:
         return "Doc# {}: {}".format(self.get_id(), str(self.token_list))
     
 
+if __name__ == '__main__':
+    d = Document(1, 'hello Hello , ,,,\n  \
+                 \
+                 \
+                 \
+                 world "I am tired! I like fruit...and milk 大西瓜')
+    print(d.freq_map)
