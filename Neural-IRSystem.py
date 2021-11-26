@@ -1,13 +1,15 @@
 from Tokenizer import *
 from Document import *
 from math import *
-from queue import PriorityQueue
 from QueryParser import *
+from sentence_transformers import SentenceTransformer, CrossEncoder
 import os
+import torch
 
 
 class IRSystem:
     tkn = Tokenizer()
+    cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2', device = 'cuda')
     
     def __init__(self, doc_path = 'files' + os.path.sep + 'Trec_microblog11.txt'):
         #document path
@@ -51,6 +53,8 @@ class IRSystem:
                 self.average_doc_length += len(doc.token_list)
                 
                 self.N += 1
+                
+                #print(len(self.vocabulary))
             
 
         for doc in self.doc_map.values():
@@ -58,6 +62,7 @@ class IRSystem:
             #print(doc.norm)
         
         self.average_doc_length /= self.N
+        print("Indexing complete, total vocabulary = {} words".format(str(len(self.vocabulary))))
         
     def index_document(self, doc):
         for token in doc.freq_map.keys():
@@ -136,14 +141,30 @@ class IRSystem:
             else:
                 ret.append((similarity_map[doc] / doc.norm / query_norm, doc))
         
-        ret.sort(key = lambda x : x[0])
-        ret.reverse()
+        ret.sort(key = lambda x : x[0], reverse = True)
         return ret[:K]
         
     
+    def rerank(self, q, to_rerank):
+        '''
+        q: raw query
+        to_rerank = [[score1, doc1],[score2, doc2], ...]
+        '''
+        if not torch.cuda.is_available():
+            print("Warning: No GPU found. Please get a RTX3090")
+        
+        cross_inq = [[q, doc.raw_text] for (_, doc) in to_rerank]
+        cross_scores = self.cross_encoder.predict(cross_inq)
+        
+        for i in range(len(to_rerank)):
+            to_rerank[i] = (cross_scores[i], to_rerank[i][1])
+        
+        to_rerank.sort(key = lambda x : x[0], reverse = True)
+    
+    
     def run_query(self, 
                   query_file_path, output_file_path,
-                  K = 1000, eval = False, method = 'tf-idf', refine = True
+                  K = 1000, eval = False, method = 'bm-25', refine = True, rerank = True
                 ):
         query_list = QueryParser().parse(query_file_path)
         with open(output_file_path, 'w', encoding = 'utf-8') as f:
@@ -151,13 +172,18 @@ class IRSystem:
             for query in query_list:
                 #process extension query, retrive top 10 ranked query
                 if refine:
+                    refined_query = query
                     topRank = self.retrive_top_K(query, 10, method)
-                    #print(topRank[:10])
                     #append extended query to original query
                     for socore, doc in topRank:
-                        query += " " + doc.raw_text
+                        refined_query += " " + doc.raw_text
                     
-                res = self.retrive_top_K(query, K, method)    
+                res = self.retrive_top_K(refined_query, K, method)
+                
+                #it's cricial to use the original query to rerank, do not use the refinded query!
+                if rerank:
+                    self.rerank(query, res) 
+                
                 rank = 1
                 for score, doc in res:
                     if eval:
@@ -166,15 +192,15 @@ class IRSystem:
                         f.write("MB{:03d} Q0 {:s} {:d} {:.3f} muRun\n".format(query_number, doc.id, rank, score))
                     rank += 1
                 
+                print(query_number)
                 query_number += 1
                 
                 
 if __name__ == '__main__':
     ir = IRSystem('files' + os.path.sep + 'Trec_microblog11.txt')
-    # import random
-    # print(random.sample(ir.vocabulary, 200))
-    # print(len(ir.vocabulary))
+    
+    #bert re-rank
     ir.run_query(
         'files' + os.path.sep + 'topics_MB1-49.txt', 'output.txt',
-        K = 1000, eval = True, method = 'bm-25', refine = True
+        K = 1000, eval = True, method = 'bm-25', refine = True, rerank = True
                  )
