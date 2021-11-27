@@ -2,7 +2,7 @@ from Tokenizer import *
 from Document import *
 from math import *
 from QueryParser import *
-from sentence_transformers import SentenceTransformer, CrossEncoder
+from sentence_transformers import SentenceTransformer, CrossEncoder, util
 import os
 import torch
 
@@ -10,6 +10,7 @@ import torch
 class IRSystem:
     tkn = Tokenizer()
     cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2', device = 'cuda' if torch.cuda.is_available() else None)
+    bi_encoder  = SentenceTransformer('multi-qa-MiniLM-L6-cos-v1', device = 'cuda' if torch.cuda.is_available() else None)
     
     def __init__(self, doc_path = 'files' + os.path.sep + 'Trec_microblog11.txt'):
         #document path
@@ -23,7 +24,8 @@ class IRSystem:
         
         #map of each document with it's ID
         self.doc_map = dict()
-        
+        self.all_doc = list()
+    
         #map of document frequency of each term
         self.doc_freq = dict()
         
@@ -32,6 +34,9 @@ class IRSystem:
         
         #average document length
         self.average_doc_length = 0
+        
+        #used for sentence transformer, only initilized once
+        self.doc_embeddings = None
         
         self.process_documents()
         
@@ -61,7 +66,8 @@ class IRSystem:
             doc.calc_norm(self.doc_freq, self.N)
             #print(doc.norm)
         
-        self.average_doc_length /= self.N
+        self.average_doc_length /= self.N    
+        
         print("Indexing complete, total vocabulary = {} words".format(str(len(self.vocabulary))))
         
     def index_document(self, doc):
@@ -85,6 +91,9 @@ class IRSystem:
         return ret
     
     def retrive_top_K(self, q, K, method = 'tf-idf'):
+        if method == 'bert':
+            return self.bert_retrive_top_K(q, K)
+        
         #store each document and it's word vector map<doc : double>
         similarity_map = dict()
         #remove stop words, tokenization using porter stemmer
@@ -144,6 +153,26 @@ class IRSystem:
         ret.sort(key = lambda x : x[0], reverse = True)
         return ret[:K]
         
+    def bert_retrive_top_K(self, q, K):
+        #compute document embedding, we only need to compute this embedding once
+        if self.doc_embeddings == None:
+            self.all_doc = [doc for doc in self.doc_map.values()]
+            self.doc_embeddings = self.bi_encoder.encode(
+            [doc.url_removed for doc in self.all_doc],
+            convert_to_tensor = True, show_progress_bar = True)
+            
+        #Encode the query using the bi-encoder and find potentially relevant passages
+        question_embedding = self.bi_encoder.encode(q, convert_to_tensor = True)
+        question_embedding = question_embedding.cuda()
+        hits = util.semantic_search(question_embedding, self.doc_embeddings, top_k = K)
+        
+        ret = list()
+        for i in range(len(hits[0])):
+            ret.append((hits[0][i]['score'], self.all_doc[hits[0][i]['corpus_id']]))
+        
+        return ret
+        
+        
     
     def rerank(self, q, to_rerank):
         '''
@@ -153,7 +182,7 @@ class IRSystem:
         if not torch.cuda.is_available():
             print("Warning: No GPU found. Please get a RTX3090")
         
-        cross_inq = [[q, doc.raw_text] for (_, doc) in to_rerank]
+        cross_inq = [[q, doc.url_removed] for (_, doc) in to_rerank]
         cross_scores = self.cross_encoder.predict(cross_inq)
         
         for i in range(len(to_rerank)):
@@ -173,10 +202,10 @@ class IRSystem:
                 #process extension query, retrive top 10 ranked query
                 if refine:
                     refined_query = query
-                    topRank = self.retrive_top_K(query, 10, method)
+                    topRank = self.retrive_top_K(query, 4, method)
                     #append extended query to original query
                     for socore, doc in topRank:
-                        refined_query += " " + doc.raw_text
+                        refined_query += " " + doc.url_removed
                 
                 res = self.retrive_top_K(refined_query if refine else query, K, method)
                 
@@ -200,8 +229,16 @@ if __name__ == '__main__':
     # import random
     # print(random.sample(ir.vocabulary, 200))
     
-    #bert re-rank
+    #bm-25 + re-rank(cross encoder)
     ir.run_query(
-        'files' + os.path.sep + 'topics_MB1-49.txt', 'output.txt',
+        'files' + os.path.sep + 'topics_MB1-49.txt', 'bm25_rerank.txt',
         K = 1000, eval = True, method = 'bm-25', refine = True, rerank = True
                  )
+    print('bm-25 + rerank generated')
+    
+    #bicoder(sentence transormer) + rerank(cross encoder)
+    ir.run_query(
+        'files' + os.path.sep + 'topics_MB1-49.txt', 'bicoder_rerank.txt',
+        K = 1000, eval = True, method = 'bert', refine = True, rerank = True
+                 )
+    print('bert + rerank generated')

@@ -1,5 +1,6 @@
 from Tokenizer import *
 from math import *
+import re
 
 class Document:
     tkn = Tokenizer()
@@ -9,6 +10,8 @@ class Document:
         self.id = id
         #document's raw text
         self.raw_text = text
+        #raw_text with url and mentions removed
+        self.url_removed = ' '.join(re.sub(r"(?:\@|http?\://|https?\://|www)\S+", "", text).split())
         #populate document's token list
         self.token_list = Document.tkn.get_tokens(text)
         #tf-idf vector
@@ -58,15 +61,10 @@ if __name__ == '__main__':
                  \
                  \
                  \
-                 world "I am tired! I like fruit...and milk 大西瓜')
-    d1 = Document(1, 'Yay its one of my favorite episodes of Boy Meets World :)')
+                 world "I am ti http://bit.ly/a0vT5sred! I like fruit...and milk 大西瓜 \
+                 world "I am ti @coollx @jiaxungao I like fruit...and milk 大西瓜')
     print(d.freq_map)
     print(d.tf_idf)
-    
-    from queue import PriorityQueue
-    pq=PriorityQueue()
-    pq.put((1,d))
-    pq.put((2,d1))
-    
-    print(pq.get()[1].raw_text)
+    print(d.url_removed)
+
     
