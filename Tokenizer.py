@@ -4,7 +4,6 @@ import re
 #nltk.download('punkt')
 #nltk.download('stopwords')
 import nltk
-from nltk.tokenize import word_tokenize
 from nltk.stem import PorterStemmer
 from nltk.stem import SnowballStemmer
 from nltk.corpus import stopwords
@@ -17,15 +16,6 @@ class Tokenizer:
     #stemmer = PorterStemmer()
     lemma = nltk.wordnet.WordNetLemmatizer()
     tweet_tokenizer = TweetTokenizer()
-    
-    def remove_punc(self, line):
-        '''
-        str -> str, remove punctuations from a given string
-        '''
-        return line.translate(str.maketrans(' ', ' ', string.punctuation))
-    
-    def remove_url(self, line):
-        return re.sub(r"(?:\@|https?\://)\S+", '', line)
     
     def get_tokens(self, text : str):
         tokens = self.tweet_tokenizer.tokenize(text)

@@ -9,7 +9,7 @@ import torch
 
 class IRSystem:
     tkn = Tokenizer()
-    cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2', device = 'cuda')
+    cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2', device = 'cuda' if torch.cuda.is_available() else None)
     
     def __init__(self, doc_path = 'files' + os.path.sep + 'Trec_microblog11.txt'):
         #document path
@@ -85,7 +85,7 @@ class IRSystem:
         return ret
     
     def retrive_top_K(self, q, K, method = 'tf-idf'):
-        #store each document and it's word vector
+        #store each document and it's word vector map<doc : double>
         similarity_map = dict()
         #remove stop words, tokenization using porter stemmer
         query = IRSystem.tkn.get_tokens(q)
@@ -177,8 +177,8 @@ class IRSystem:
                     #append extended query to original query
                     for socore, doc in topRank:
                         refined_query += " " + doc.raw_text
-                    
-                res = self.retrive_top_K(refined_query, K, method)
+                
+                res = self.retrive_top_K(refined_query if refine else query, K, method)
                 
                 #it's cricial to use the original query to rerank, do not use the refinded query!
                 if rerank:
@@ -192,12 +192,13 @@ class IRSystem:
                         f.write("MB{:03d} Q0 {:s} {:d} {:.3f} muRun\n".format(query_number, doc.id, rank, score))
                     rank += 1
                 
-                print(query_number)
                 query_number += 1
                 
                 
 if __name__ == '__main__':
     ir = IRSystem('files' + os.path.sep + 'Trec_microblog11.txt')
+    # import random
+    # print(random.sample(ir.vocabulary, 200))
     
     #bert re-rank
     ir.run_query(
