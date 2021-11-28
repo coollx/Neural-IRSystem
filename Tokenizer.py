@@ -38,6 +38,27 @@ class Tokenizer:
          
         return [self.stemmer.stem(t) for t in ret if len(t) > 1]
         #return [self.stemmer.stem(self.lemma.lemmatize(t).lower()) for t in ret]
+    
+    def get_raw_tokens(self, text : str):
+        tokens = self.tweet_tokenizer.tokenize(text)
+        temp = []
+    
+        for token in tokens:
+            if not token in self.stopwords and \
+                not 'http' in token and \
+                not 'www' in token and \
+                not token in string.punctuation and \
+                not '@' in token:
+                if token[0] == '#':
+                    temp.append(token[1:])
+                else:
+                    temp.append(token)
+        
+        ret = []
+        for token in temp:
+            ret.extend(token.split('-'))
+         
+        return [t for t in ret if len(t) > 1]
 
 
 if __name__ == '__main__':

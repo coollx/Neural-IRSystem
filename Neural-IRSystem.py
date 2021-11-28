@@ -1,7 +1,9 @@
 from Tokenizer import *
 from Document import *
+from train import *
 from math import *
 from QueryParser import *
+import gensim.models
 from sentence_transformers import SentenceTransformer, CrossEncoder, util
 import os
 import torch
@@ -193,21 +195,37 @@ class IRSystem:
     
     def run_query(self, 
                   query_file_path, output_file_path,
-                  K = 1000, eval = False, method = 'bm-25', refine = True, rerank = True
+                  K = 1000, eval = False, method = 'bm-25', extend = True, rerank = True
                 ):
         query_list = QueryParser().parse(query_file_path)
         with open(output_file_path, 'w', encoding = 'utf-8') as f:
             query_number = 1
             for query in query_list:
                 #process extension query, retrive top 10 ranked query
-                if refine:
-                    refined_query = query
-                    topRank = self.retrive_top_K(query, 4, method)
+                if extend:
+                    extended_query = query
+                    topRank = self.retrive_top_K(query, 20, method)
                     #append extended query to original query
                     for socore, doc in topRank:
-                        refined_query += " " + doc.url_removed
+                        extended_query += " " + doc.url_removed
                 
-                res = self.retrive_top_K(refined_query if refine else query, K, method)
+                    wv_model_path = 'models' + os.sep + 'word2vec.txt'
+                    #model already cached, don't need to train twice
+                    if  os.path.exists(wv_model_path):
+                        model = gensim.models.Word2Vec.load(wv_model_path)
+                    #train model from scratch
+                    else:
+                        model = train_Word2Vec('files' + os.sep + 'Trec_microblog11.txt', 'models' + os.sep + 'word2vec.txt')
+                    
+                    query_token_list = [token for token in query.split() if token in model.wv.index_to_key]
+                        
+                    synonyms = model.wv.most_similar(query_token_list, topn = 1)
+                    synonyms = set([token for (token, _) in synonyms])
+                    #extended_query = query + ' '.join(synonyms)
+                    extended_query += ' '.join(synonyms)
+                    
+                
+                res = self.retrive_top_K(extended_query if extend else query, K, method)
                 
                 #it's cricial to use the original query to rerank, do not use the refinded query!
                 if rerank:
@@ -231,14 +249,14 @@ if __name__ == '__main__':
     
     #bm-25 + re-rank(cross encoder)
     ir.run_query(
-        'files' + os.path.sep + 'topics_MB1-49.txt', 'bm25_rerank.txt',
-        K = 1000, eval = True, method = 'bm-25', refine = True, rerank = True
+        'files' + os.path.sep + 'topics_MB1-49.txt', 'output' + os.sep + 'bm25_rerank.txt',
+        K = 1000, eval = True, method = 'bm-25', extend = True, rerank = True
                  )
     print('bm-25 + rerank generated')
     
     #bicoder(sentence transormer) + rerank(cross encoder)
     ir.run_query(
-        'files' + os.path.sep + 'topics_MB1-49.txt', 'bicoder_rerank.txt',
-        K = 1000, eval = True, method = 'bert', refine = True, rerank = True
+        'files' + os.path.sep + 'topics_MB1-49.txt',  'output' + os.sep + 'bert_expansion_rerank.txt',
+        K = 1000, eval = True, method = 'bert', extend = True, rerank = True
                  )
     print('bert + rerank generated')

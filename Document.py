@@ -14,6 +14,8 @@ class Document:
         self.url_removed = ' '.join(re.sub(r"(?:\@|http?\://|https?\://|www)\S+", "", text).split())
         #populate document's token list
         self.token_list = Document.tkn.get_tokens(text)
+        #raw token list
+        self.raw_token_list = Document.tkn.get_raw_tokens(text)
         #tf-idf vector
         self.tf_idf = []
         #norm of tf-idf vector
