@@ -165,7 +165,8 @@ class IRSystem:
             
         #Encode the query using the bi-encoder and find potentially relevant passages
         question_embedding = self.bi_encoder.encode(q, convert_to_tensor = True)
-        question_embedding = question_embedding.cuda()
+        if torch.cuda.is_available():
+            question_embedding = question_embedding.cuda()
         hits = util.semantic_search(question_embedding, self.doc_embeddings, top_k = K)
         
         ret = list()
