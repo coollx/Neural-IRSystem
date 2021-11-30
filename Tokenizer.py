@@ -1,8 +1,6 @@
 import nltk
 import string
 import re
-#nltk.download('punkt')
-#nltk.download('stopwords')
 import nltk
 from nltk.stem import PorterStemmer
 from nltk.stem import SnowballStemmer

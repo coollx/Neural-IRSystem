@@ -11,6 +11,8 @@ import torch
 
 class IRSystem:
     tkn = Tokenizer()
+    if not torch.cuda.is_available():
+            print("Warning: No GPU found. Please get a RTX3090")
     cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2', device = 'cuda' if torch.cuda.is_available() else None)
     bi_encoder  = SentenceTransformer('multi-qa-MiniLM-L6-cos-v1', device = 'cuda' if torch.cuda.is_available() else None)
     
@@ -20,7 +22,7 @@ class IRSystem:
         
         #total number of documents in system
         self.N = 0
-        
+
         #set of vocabulary
         self.vocabulary = set()
         
@@ -155,10 +157,12 @@ class IRSystem:
         ret.sort(key = lambda x : x[0], reverse = True)
         return ret[:K]
         
+    #This is the third method proposed in assignment: it didn't involves any information retrivial method
     def bert_retrive_top_K(self, q, K):
         #compute document embedding, we only need to compute this embedding once
         if self.doc_embeddings == None:
             self.all_doc = [doc for doc in self.doc_map.values()]
+            #use bi-encoder to get the doc2vec embedding
             self.doc_embeddings = self.bi_encoder.encode(
             [doc.url_removed for doc in self.all_doc],
             convert_to_tensor = True, show_progress_bar = True)
@@ -167,30 +171,33 @@ class IRSystem:
         question_embedding = self.bi_encoder.encode(q, convert_to_tensor = True)
         if torch.cuda.is_available():
             question_embedding = question_embedding.cuda()
+        #retrive top K result using sementic search
         hits = util.semantic_search(question_embedding, self.doc_embeddings, top_k = K)
         
         ret = list()
         for i in range(len(hits[0])):
-            ret.append((hits[0][i]['score'], self.all_doc[hits[0][i]['corpus_id']]))
+            #append retrived corpus text to list
+            ret.append((hits[0][i]['score'], self.all_doc[hits[0][i]['corpus_id']])) 
         
         return ret
         
         
-    
+    #This is the first method proposed in Assignment: rerank method
     def rerank(self, q, to_rerank):
         '''
         q: raw query
         to_rerank = [[score1, doc1],[score2, doc2], ...]
         '''
-        if not torch.cuda.is_available():
-            print("Warning: No GPU found. Please get a RTX3090")
         
+        #use the raw text with original text removed to rerank
         cross_inq = [[q, doc.url_removed] for (_, doc) in to_rerank]
+        #compute the similarity score using a cross endoder
         cross_scores = self.cross_encoder.predict(cross_inq)
         
         for i in range(len(to_rerank)):
             to_rerank[i] = (cross_scores[i], to_rerank[i][1])
         
+        #sort the reranked documents by the first key, which is the similarity value with the original query.
         to_rerank.sort(key = lambda x : x[0], reverse = True)
     
     
@@ -202,7 +209,7 @@ class IRSystem:
         with open(output_file_path, 'w', encoding = 'utf-8') as f:
             query_number = 1
             for query in query_list:
-                #process extension query, retrive top 10 ranked query
+                #process extension query, retrive top 20 ranked query
                 if extend:
                     extended_query = query
                     topRank = self.retrive_top_K(query, 20, method)
@@ -218,8 +225,11 @@ class IRSystem:
                     else:
                         model = train_Word2Vec('files' + os.sep + 'Trec_microblog11.txt', 'models' + os.sep + 'word2vec.txt')
                     
+                    #extract query tokens that has synonymes in wordnet
                     query_token_list = [token for token in query.split() if token in model.wv.index_to_key]
-                        
+                    
+                    #This is the second method proposed in assignment
+                    #add the most similar query token list to the extended query
                     synonyms = model.wv.most_similar(query_token_list, topn = 1)
                     synonyms = set([token for (token, _) in synonyms])
                     #extended_query = query + ' '.join(synonyms)
@@ -237,6 +247,7 @@ class IRSystem:
                     if eval:
                         f.write("{:d} Q0 {} {:d} {:.3f} muRun\n".format(query_number, doc.id, rank, score))
                     else:
+                        #f.write("MB{:03d} Q0 {:s} {:s} {:d} {:.3f} muRun\n \n".format(query_number, doc.id, doc.raw_text.replace('\n', ''), rank, score))
                         f.write("MB{:03d} Q0 {:s} {:d} {:.3f} muRun\n".format(query_number, doc.id, rank, score))
                     rank += 1
                 
@@ -245,19 +256,17 @@ class IRSystem:
                 
 if __name__ == '__main__':
     ir = IRSystem('files' + os.path.sep + 'Trec_microblog11.txt')
-    # import random
-    # print(random.sample(ir.vocabulary, 200))
     
     #bm-25 + re-rank(cross encoder)
-    ir.run_query(
-        'files' + os.path.sep + 'topics_MB1-49.txt', 'output' + os.sep + 'bm25_rerank.txt',
-        K = 1000, eval = True, method = 'bm-25', extend = True, rerank = True
-                 )
-    print('bm-25 + rerank generated')
+    # ir.run_query(
+    #     'files' + os.path.sep + 'topics_MB1-49.txt', 'output' + os.sep + 'bm25_rerank.txt',
+    #     K = 1000, eval = True, method = 'bm-25', extend = True, rerank = True
+    #              )
+    # print('bm-25 + rerank generated')
     
-    #bicoder(sentence transormer) + rerank(cross encoder)
+    #bicoder(sentence transormer) + rerank(cross encoder) +query expansion
     ir.run_query(
-        'files' + os.path.sep + 'topics_MB1-49.txt',  'output' + os.sep + 'bert_expansion_rerank.txt',
+        'files' + os.path.sep + 'topics_MB1-49.txt',  'output' + os.sep + 'results.txt',
         K = 1000, eval = True, method = 'bert', extend = True, rerank = True
                  )
-    print('bert + rerank generated')
+    print('bert + query expansion + rerank generated')

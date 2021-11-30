@@ -1,0 +1,13 @@
+<top>
+    <num> Number: MB003 </num>
+    <title> Haiti Aristide return </title>
+    <querytime> Tue Feb 08 21:32:13 +0000 2011 </querytime>
+    <querytweettime> 35088534306033665 </querytweettime>
+</top>
+
+<top>
+    <num> Number: MB020 </num>
+    <title> Taco Bell filling lawsuit </title>
+    <querytime> Sun Feb 06 07:09:20 +0000 2011 </querytime>
+    <querytweettime> 34146608102772736 </querytweettime>
+</top>
